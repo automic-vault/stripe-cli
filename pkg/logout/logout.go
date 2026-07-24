@@ -15,11 +15,9 @@ import (
 // Logout clears credentials for the current profile. For OAuth sessions it
 // also revokes the token before clearing.
 func Logout(ctx context.Context, accessBaseURL string, cfg *config.Config) error {
-	liveKey, _ := cfg.Profile.GetAPIKey(true)
-	testKey, _ := cfg.Profile.GetAPIKey(false)
 	uat, _ := cfg.Profile.GetUAT()
 
-	if liveKey == "" && testKey == "" && uat == "" && !hasStoredOAuthData() {
+	if !cfg.Profile.HasAPIKey(true) && !cfg.Profile.HasAPIKey(false) && uat == "" && !hasStoredOAuthData() {
 		fmt.Println("You are already logged out.")
 		return nil
 	}

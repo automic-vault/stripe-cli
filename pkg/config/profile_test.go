@@ -5,6 +5,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 
@@ -14,6 +15,43 @@ import (
 	"github.com/stripe/stripe-cli/pkg/errorcategory"
 	"github.com/stripe/stripe-cli/pkg/keyring"
 )
+
+func TestProtectedAPIKeysNeverWrittenToConfig(t *testing.T) {
+	if !keyring.ProtectsAllAPIKeys() {
+		t.Skip("platform keeps upstream test-mode config storage")
+	}
+
+	profilesFile := filepath.Join(t.TempDir(), "config.toml")
+	p := Profile{
+		ProfileName:    "default",
+		AccountID:      "acct_123",
+		LiveModeAPIKey: "rk_live_1234567890000",
+		TestModeAPIKey: "rk_test_1234567890000",
+		DisplayName:    "Test Account",
+	}
+	c := &Config{Color: "auto", LogLevel: "info", Profile: p, ProfilesFile: profilesFile}
+	KeyRing = keyring.NewMemoryStore(nil)
+	t.Cleanup(func() {
+		KeyRing = nil
+		viper.Reset()
+	})
+	c.InitConfig()
+
+	require.NoError(t, p.CreateProfile())
+
+	configData := string(helperLoadBytes(t, profilesFile))
+	require.NotContains(t, configData, p.LiveModeAPIKey)
+	require.NotContains(t, configData, p.TestModeAPIKey)
+	require.True(t, strings.Contains(configData, "rk_live_*********0000"))
+	require.True(t, strings.Contains(configData, "rk_test_*********0000"))
+
+	liveKey, err := p.GetAPIKey(true)
+	require.NoError(t, err)
+	require.Equal(t, "rk_live_1234567890000", liveKey)
+	testKey, err := p.GetAPIKey(false)
+	require.NoError(t, err)
+	require.Equal(t, "rk_test_1234567890000", testKey)
+}
 
 // setupProfileConfig writes contents to a temp config file and initializes the
 // global viper from it, so tests exercise the same read path as the CLI rather
