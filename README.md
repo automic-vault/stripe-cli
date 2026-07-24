@@ -1,3 +1,33 @@
+# Automic Vault Fork Notes
+
+This repository is the Automic Vault fork of Stripe CLI.
+
+Automic Vault is a macOS-first secret and execution control system that
+keeps sensitive credentials behind explicit human approval in the Automic
+Vault GUI app instead of exposing them directly to terminal tools.
+
+This fork currently adds the following behavior on top of upstream
+`stripe/stripe-cli`:
+
+- On macOS, all Stripe CLI credential reads, writes, and deletes use Automic
+  Vault's authenticated XPC broker instead of Keychain or `credentials.json`:
+  [Route macOS credentials through Automic Vault](https://github.com/automic-vault/stripe-cli/commit/56f657f8170a38aadc8a49e52151a71adef6ec12)
+- Both test- and live-mode API keys are Vault-backed. Configuration files
+  contain redacted markers, while account-scoped Vault keys preserve normal
+  login and profile switching behavior.
+- Legacy Keychain and plaintext fallback implementations are excluded from
+  macOS builds, so broker failures fail closed:
+  [Exclude legacy keyring code from macOS builds](https://github.com/automic-vault/stripe-cli/commit/aaef8b414d7c980fe758ca646817e854fa4fe3cd)
+- The companion Automic Vault app authenticates the signed `stripe` binary,
+  applies per-use approval, policy, and audit behavior, and migrates existing
+  credentials:
+  [Add Stripe CLI Vault credential support](https://github.com/automic-vault/automic-vault/commit/cf3a7d5b9668f4e6b368b89e496cf3739aa24bb2)
+
+Other platforms retain the upstream credential behavior. The remainder of
+this README is the original upstream Stripe CLI README.
+
+---
+
 # Stripe CLI
 
 ![GitHub release (latest by date)](https://img.shields.io/github/v/release/stripe/stripe-cli)
