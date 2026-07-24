@@ -1,0 +1,25 @@
+name:
+  isotope:stripe-cli
+
+replaces:
+  brew:stripe-cli
+
+build: |
+  make build
+  codesign --force --options runtime --timestamp \
+    --identifier stripe \
+    --sign "$CODESIGN_IDENTITY" \
+    stripe
+  tar czf out.tgz stripe
+
+justification:
+  title:
+    Trivially Accessible Stripe Credentials
+  detail: |
+    Upstream Stripe CLI stores test-mode API keys in plaintext configuration
+    and uses a macOS Keychain item that same-user processes can extract with
+    `/usr/bin/security`.
+
+    This isotope stores both test- and live-mode API keys through Automic
+    Vault's authenticated XPC broker. Credential reads receive Automic Vault's
+    per-use policy, approval, and audit handling.

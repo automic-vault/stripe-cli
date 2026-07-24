@@ -3,6 +3,7 @@ package config
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/spf13/viper"
@@ -10,6 +11,43 @@ import (
 
 	"github.com/stripe/stripe-cli/pkg/keyring"
 )
+
+func TestProtectedAPIKeysNeverWrittenToConfig(t *testing.T) {
+	if !keyring.ProtectsAllAPIKeys() {
+		t.Skip("platform keeps upstream test-mode config storage")
+	}
+
+	profilesFile := filepath.Join(t.TempDir(), "config.toml")
+	p := Profile{
+		ProfileName:    "default",
+		AccountID:      "acct_123",
+		LiveModeAPIKey: "rk_live_1234567890000",
+		TestModeAPIKey: "rk_test_1234567890000",
+		DisplayName:    "Test Account",
+	}
+	c := &Config{Color: "auto", LogLevel: "info", Profile: p, ProfilesFile: profilesFile}
+	KeyRing = keyring.NewMemoryStore(nil)
+	t.Cleanup(func() {
+		KeyRing = nil
+		viper.Reset()
+	})
+	c.InitConfig()
+
+	require.NoError(t, p.CreateProfile())
+
+	configData := string(helperLoadBytes(t, profilesFile))
+	require.NotContains(t, configData, p.LiveModeAPIKey)
+	require.NotContains(t, configData, p.TestModeAPIKey)
+	require.True(t, strings.Contains(configData, "rk_live_*********0000"))
+	require.True(t, strings.Contains(configData, "rk_test_*********0000"))
+
+	liveKey, err := p.GetAPIKey(true)
+	require.NoError(t, err)
+	require.Equal(t, "rk_live_1234567890000", liveKey)
+	testKey, err := p.GetAPIKey(false)
+	require.NoError(t, err)
+	require.Equal(t, "rk_test_1234567890000", testKey)
+}
 
 func TestWriteProfile(t *testing.T) {
 	profilesFile := filepath.Join(t.TempDir(), "config.toml")
@@ -42,7 +80,7 @@ func TestWriteProfile(t *testing.T) {
 	expectedConfig := `[tests]
 device_name = 'st-testing'
 display_name = 'test-account-display-name'
-test_mode_api_key = 'sk_test_123'
+test_mode_api_key = '` + expectedStoredAPIKey("sk_test_123") + `'
 test_mode_key_expires_at = '` + expiresAt + `'
 `
 
@@ -84,13 +122,13 @@ func TestWriteProfilesMerge(t *testing.T) {
 	expectedConfig := `[tests]
 device_name = 'st-testing'
 display_name = 'test-account-display-name'
-test_mode_api_key = 'sk_test_123'
+test_mode_api_key = '` + expectedStoredAPIKey("sk_test_123") + `'
 test_mode_key_expires_at = '` + expiresAt + `'
 
 [tests-merge]
 device_name = 'st-testing'
 display_name = 'test-account-display-name'
-test_mode_api_key = 'sk_test_123'
+test_mode_api_key = '` + expectedStoredAPIKey("sk_test_123") + `'
 test_mode_key_expires_at = '` + expiresAt + `'
 `
 
@@ -147,7 +185,7 @@ func TestOldProfileDeleted(t *testing.T) {
 
 	// Overwrites auth keys
 	require.Equal(t, "device-after-test", v.GetString(p.GetConfigField(DeviceNameName)))
-	require.Equal(t, "sk_test_456", v.GetString(p.GetConfigField(TestModeAPIKeyName)))
+	require.Equal(t, expectedStoredAPIKey("sk_test_456"), v.GetString(p.GetConfigField(TestModeAPIKeyName)))
 	require.Equal(t, "", v.GetString(p.GetConfigField(DisplayNameName)))
 	// Deletes experimental section
 	require.False(t, v.IsSet(v.GetString(p.GetConfigField("experimental.stripe_headers"))))
@@ -156,7 +194,7 @@ func TestOldProfileDeleted(t *testing.T) {
 	require.Equal(t, "on", v.GetString(p.GetConfigField("color")))
 	// Leaves the other profile untouched
 	require.Equal(t, "foo-device-name", v.GetString(untouchedProfile.GetConfigField(DeviceNameName)))
-	require.Equal(t, "foo_test_123", v.GetString(untouchedProfile.GetConfigField(TestModeAPIKeyName)))
+	require.Equal(t, expectedStoredAPIKey("foo_test_123"), v.GetString(untouchedProfile.GetConfigField(TestModeAPIKeyName)))
 }
 
 func TestLiveModeAPIKeyKeychainItemDeleted(t *testing.T) {
