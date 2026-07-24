@@ -10,6 +10,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/stripe/stripe-cli/pkg/errorcategory"
+	"github.com/stripe/stripe-cli/pkg/keyring"
 )
 
 // The v2 layout keeps every profile under the reserved profiles table, which is
@@ -62,10 +63,20 @@ func captureStdout(t *testing.T, fn func() error) string {
 	return buf.String()
 }
 
+func protectFixtureAPIKey(t *testing.T, p *Profile, field, value string) {
+	t.Helper()
+	if !keyring.ProtectsAllAPIKeys() {
+		return
+	}
+	require.NoError(t, p.saveAPIKey(field, value, "test API key"))
+	viper.Set(p.configFieldForWrite(field), redactedAPIKeyValue(value))
+}
+
 func TestReadProfileFromV2Layout(t *testing.T) {
 	setupProfileConfig(t, v2ConfigFile)
 
 	p := Profile{ProfileName: "default"}
+	protectFixtureAPIKey(t, &p, TestModeAPIKeyName, "sk_test_v2_key")
 
 	deviceName, err := p.GetDeviceName()
 	require.NoError(t, err)
@@ -87,6 +98,7 @@ func TestReadProfileFallsBackToV1Layout(t *testing.T) {
 	setupProfileConfig(t, v1ConfigFile)
 
 	p := Profile{ProfileName: "default"}
+	protectFixtureAPIKey(t, &p, TestModeAPIKeyName, "sk_test_v1_key")
 
 	deviceName, err := p.GetDeviceName()
 	require.NoError(t, err)
@@ -111,6 +123,7 @@ func TestReadProfilePrefersV2LayoutOverV1Shadow(t *testing.T) {
 `)
 
 	p := Profile{ProfileName: "default"}
+	protectFixtureAPIKey(t, &p, TestModeAPIKeyName, "sk_test_v2_key")
 
 	deviceName, err := p.GetDeviceName()
 	require.NoError(t, err)
@@ -135,6 +148,9 @@ func TestProfileNamedAfterSettingDoesNotCollide(t *testing.T) {
 // Legacy field names have to keep resolving in a migrated file, since the
 // migration moves fields without renaming them.
 func TestLegacyFieldAliasResolvesInV2Layout(t *testing.T) {
+	if keyring.ProtectsAllAPIKeys() {
+		t.Skip("Automic Vault does not read legacy plaintext API-key fields")
+	}
 	setupProfileConfig(t, `config_version = 2
 
 [profiles.default]
@@ -206,6 +222,7 @@ func TestLoginWritesIntoV2LayoutWhenMigrated(t *testing.T) {
 
 	p := Profile{
 		ProfileName:    "default",
+		AccountID:      "acct_v2",
 		DeviceName:     "rewritten-device",
 		TestModeAPIKey: "sk_test_rewritten_key",
 		DisplayName:    "Rewritten Account",
@@ -213,7 +230,7 @@ func TestLoginWritesIntoV2LayoutWhenMigrated(t *testing.T) {
 	require.NoError(t, p.CreateProfile())
 
 	require.Equal(t, "rewritten-device", viper.GetString("profiles.default.device_name"))
-	require.Equal(t, "sk_test_rewritten_key", viper.GetString("profiles.default.test_mode_api_key"))
+	require.Equal(t, expectedStoredAPIKey("sk_test_rewritten_key"), viper.GetString("profiles.default.test_mode_api_key"))
 	require.False(t, viper.IsSet("default.device_name"))
 
 	apiKey, err := p.GetAPIKey(false)
@@ -344,10 +361,16 @@ func TestRemoveAuthFieldsInV2Layout(t *testing.T) {
   test_mode_api_key = 'sk_test_v2_key'
 `)
 
+	p := Profile{ProfileName: "default"}
+	protectFixtureAPIKey(t, &p, TestModeAPIKeyName, "sk_test_v2_key")
 	require.NoError(t, c.RemoveAuthFields("default"))
 
 	require.False(t, viper.IsSet("profiles.default.test_mode_api_key"))
 	require.Equal(t, "on", viper.GetString("profiles.default.color"))
+	if keyring.ProtectsAllAPIKeys() {
+		_, err := p.retrieveAPIKey(TestModeAPIKeyName)
+		require.Error(t, err)
+	}
 }
 
 func TestCopyProfileInV2Layout(t *testing.T) {
