@@ -650,6 +650,9 @@ func (p *Profile) saveAPIKey(field, value, description string) error {
 }
 
 func (p *Profile) retrieveAPIKey(key string) (string, error) {
+	if KeyRing == nil {
+		return "", validators.ErrAPIKeyNotConfigured
+	}
 	fieldID := p.credentialKey(key)
 	data, err := KeyRing.Get(fieldID)
 	if err != nil {
