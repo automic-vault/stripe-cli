@@ -1,5 +1,4 @@
-// Package keyring provides credential storage backed by the OS keyring with a
-// plain-text file fallback for environments without a usable secret service.
+// Package keyring provides credential storage.
 package keyring
 
 import (
@@ -24,13 +23,9 @@ type SecureStore interface {
 	Remove(key string) error
 }
 
-// NewSecureStore returns a store that prefers the OS keyring and falls back to
-// a plain-text file at credentialsFilePath when the keyring is unavailable.
+// NewSecureStore returns the platform credential store.
 func NewSecureStore(service, credentialsFilePath string) SecureStore {
-	return &fallbackStore{
-		primary:  newZalandoStore(service),
-		fallback: &fileStore{path: credentialsFilePath},
-	}
+	return newSecureStore(service, credentialsFilePath)
 }
 
 // IsUsingInsecureStorage reports whether credentials have been written to the
