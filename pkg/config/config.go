@@ -384,7 +384,9 @@ func (c *Config) SwitchProfile(profileName string) error {
 
 	// Remove the old profile key since it's now been copied to "default"
 	// This keeps the config file clean by not having duplicate data
-	c.RemoveProfile(profileName)
+	if err := removeProfileConfig(profileName); err != nil {
+		return err
+	}
 
 	// Finally, reload the config to pick up the new "default" profile
 	c.InitConfig()
@@ -448,13 +450,15 @@ func (c *Config) RemoveProfile(profileName string) error {
 		}
 
 		matched = true
+		if err := deleteProfileAPIKeys(entry.name); err != nil {
+			return err
+		}
 
 		runtimeViper, err = removeKey(runtimeViper, entry.key)
 		if err != nil {
 			return err
 		}
 
-		deleteLivemodeKey(LiveModeAPIKeyName, entry.name)
 	}
 
 	// A top-level profile is only found above when isProfile recognizes it, which
@@ -470,13 +474,14 @@ func (c *Config) RemoveProfile(profileName string) error {
 			}
 
 			matched = true
+			if err := deleteProfileAPIKeys(profileName); err != nil {
+				return err
+			}
 
 			runtimeViper, err = removeKey(runtimeViper, key)
 			if err != nil {
 				return err
 			}
-
-			deleteLivemodeKey(LiveModeAPIKeyName, profileName)
 
 			break
 		}
@@ -516,12 +521,13 @@ func (c *Config) RemoveAllProfiles() error {
 	var err error
 
 	for _, entry := range listProfileEntries(runtimeViper) {
+		if err := deleteProfileAPIKeys(entry.name); err != nil {
+			return err
+		}
 		runtimeViper, err = removeKey(runtimeViper, entry.key)
 		if err != nil {
 			return err
 		}
-
-		deleteLivemodeKey(LiveModeAPIKeyName, entry.name)
 	}
 
 	return writeConfig(runtimeViper)
@@ -539,10 +545,12 @@ func (c *Config) RemoveAuthFields(profileName string) error {
 		}
 
 		matched = true
+		if err := deleteProfileAPIKeys(entry.name); err != nil {
+			return err
+		}
 
 		p := &Profile{ProfileName: entry.name}
 		runtimeViper = p.deleteAuthFields(runtimeViper)
-		deleteLivemodeKey(LiveModeAPIKeyName, entry.name)
 	}
 
 	// Profiles with a period in the name are nested tables that the enumeration
@@ -551,9 +559,11 @@ func (c *Config) RemoveAuthFields(profileName string) error {
 	// layouts, so this covers a dotted profile wherever it lives.
 	if !matched && isNestedProfileName(profileName) &&
 		(runtimeViper.IsSet(ProfilesTableName+"."+profileName) || runtimeViper.IsSet(profileName)) {
+		if err := deleteProfileAPIKeys(profileName); err != nil {
+			return err
+		}
 		p := &Profile{ProfileName: profileName}
 		runtimeViper = p.deleteAuthFields(runtimeViper)
-		deleteLivemodeKey(LiveModeAPIKeyName, profileName)
 	}
 
 	deleteTopLevelLivemodeKey(UATKeychainItemKey)
@@ -575,9 +585,11 @@ func (c *Config) RemoveAllAuthFields() error {
 	runtimeViper := viper.GetViper()
 
 	for _, entry := range listProfileEntries(runtimeViper) {
+		if err := deleteProfileAPIKeys(entry.name); err != nil {
+			return err
+		}
 		p := &Profile{ProfileName: entry.name}
 		runtimeViper = p.deleteAuthFields(runtimeViper)
-		deleteLivemodeKey(LiveModeAPIKeyName, entry.name)
 	}
 
 	deleteTopLevelLivemodeKey(UATKeychainItemKey)
@@ -593,13 +605,48 @@ func (c *Config) RemoveAllAuthFields() error {
 	return writeConfig(runtimeViper)
 }
 
-func deleteLivemodeKey(key string, profile string) error {
-	fieldID := profile + "." + key
-	err := KeyRing.Remove(fieldID)
-	if errors.Is(err, keyring.ErrKeyNotFound) {
-		return nil
+func deleteProfileAPIKeys(profile string) error {
+	p := &Profile{ProfileName: profile}
+	fields := []string{LiveModeAPIKeyName}
+	if keyring.ProtectsAllAPIKeys() {
+		fields = append(fields, TestModeAPIKeyName)
 	}
-	return err
+	for _, field := range fields {
+		if err := p.deleteAPIKey(field); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func removeProfileConfig(profileName string) error {
+	runtimeViper := viper.GetViper()
+	var matched bool
+	for _, entry := range listProfileEntries(runtimeViper) {
+		if !entry.matches(profileName) {
+			continue
+		}
+		matched = true
+		var err error
+		runtimeViper, err = removeKey(runtimeViper, entry.key)
+		if err != nil {
+			return err
+		}
+	}
+	if !matched {
+		for _, key := range []string{ProfilesTableName + "." + profileName, profileName} {
+			if !isProfileTable(runtimeViper, key) {
+				continue
+			}
+			var err error
+			runtimeViper, err = removeKey(runtimeViper, key)
+			if err != nil {
+				return err
+			}
+			break
+		}
+	}
+	return writeConfig(runtimeViper)
 }
 
 func deleteTopLevelLivemodeKey(key string) error {

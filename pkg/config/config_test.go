@@ -73,7 +73,7 @@ func TestCopyProfile(t *testing.T) {
 	// Verify the backup exists
 	v := viper.GetViper()
 	require.True(t, v.IsSet("backup"))
-	require.Equal(t, "sk_test_123", v.GetString("backup.test_mode_api_key"))
+	require.Equal(t, expectedStoredAPIKey("sk_test_123"), v.GetString("backup.test_mode_api_key"))
 	require.Equal(t, "My Test Account", v.GetString("backup.display_name"))
 	require.Equal(t, "backup", v.GetString("backup.profile_name"))
 }
@@ -100,7 +100,7 @@ func TestCopyProfile_SkipsPluginConfigsFieldsInPluginConfigsProfile(t *testing.T
 
 	v := viper.GetViper()
 	require.True(t, v.IsSet("backup"))
-	require.Equal(t, "sk_test_123", v.GetString("backup.test_mode_api_key"))
+	require.Equal(t, expectedStoredAPIKey("sk_test_123"), v.GetString("backup.test_mode_api_key"))
 	require.False(t, v.IsSet("backup.apps"), "per-plugin config section must not be copied")
 	require.False(t, v.IsSet("backup.__global"), "global plugin config section must not be copied")
 }
@@ -127,7 +127,7 @@ func TestCopyProfile_SkipsPluginConfigsField(t *testing.T) {
 
 	v := viper.GetViper()
 	require.True(t, v.IsSet("backup"))
-	require.Equal(t, "sk_test_123", v.GetString("backup.test_mode_api_key"))
+	require.Equal(t, expectedStoredAPIKey("sk_test_123"), v.GetString("backup.test_mode_api_key"))
 	require.False(t, v.IsSet("backup.apps"), "per-plugin config section must not be copied")
 	require.False(t, v.IsSet("backup.__global"), "global plugin config section must not be copied")
 }
@@ -359,12 +359,29 @@ func TestSwitchProfile(t *testing.T) {
 
 	// Verify "default" now has the other account's data
 	v := viper.GetViper()
-	require.Equal(t, "sk_test_other", v.GetString("default.test_mode_api_key"))
+	require.Equal(t, expectedStoredAPIKey("sk_test_other"), v.GetString("default.test_mode_api_key"))
 	require.Equal(t, "Other Account", v.GetString("default.display_name"))
 
 	// Verify the previous default was backed up
-	require.Equal(t, "sk_test_default", v.GetString("default account.test_mode_api_key"))
+	require.Equal(t, expectedStoredAPIKey("sk_test_default"), v.GetString("default account.test_mode_api_key"))
 
 	// Verify the old profile key is removed (it was copied to "default" so the original is cleaned up)
 	require.False(t, v.IsSet("other account"), "other account should be removed after switch")
+
+	if keyring.ProtectsAllAPIKeys() {
+		activeKey, err := (&Profile{ProfileName: "default"}).GetAPIKey(false)
+		require.NoError(t, err)
+		require.Equal(t, "sk_test_other", activeKey)
+
+		backupKey, err := (&Profile{ProfileName: "default account"}).GetAPIKey(false)
+		require.NoError(t, err)
+		require.Equal(t, "sk_test_default", backupKey)
+	}
+}
+
+func expectedStoredAPIKey(key string) string {
+	if keyring.ProtectsAllAPIKeys() {
+		return redactedAPIKeyValue(key)
+	}
+	return key
 }
