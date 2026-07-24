@@ -738,7 +738,10 @@ func (p *Profile) retrieveAPIKey(key string) (string, error) {
 	fieldID := p.credentialKey(key)
 	data, err := KeyRing.Get(fieldID)
 	if err != nil {
-		return "", validators.ErrAPIKeyNotConfigured
+		if errors.Is(err, keyring.ErrKeyNotFound) {
+			return "", validators.ErrAPIKeyNotConfigured
+		}
+		return "", err
 	}
 	return string(data), nil
 }
