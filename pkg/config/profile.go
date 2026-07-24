@@ -112,8 +112,10 @@ func (p *Profile) CreateProfile() error {
 	// Remove only auth-related keys under existing profile first
 	v := p.deleteAuthFields(viper.GetViper())
 
-	// Fail open to avoid blocking login
-	p.deleteLivemodeValue(LiveModeAPIKeyName)
+	if !keyring.ProtectsAllAPIKeys() {
+		// Preserve the upstream keyring replacement behavior on other platforms.
+		p.deleteAPIKey(LiveModeAPIKeyName)
+	}
 
 	// user_info is top-level; remove it before re-writing so stale data is never kept
 	if v.IsSet(UserInfoName) {
@@ -234,6 +236,17 @@ func (p *Profile) HasAPIKey(livemode bool) bool {
 		return isLivemodeKey(p.APIKey) == livemode
 	}
 
+	if keyring.ProtectsAllAPIKeys() {
+		if err := viper.ReadInConfig(); err != nil {
+			return false
+		}
+		field := TestModeAPIKeyName
+		if livemode {
+			field = LiveModeAPIKeyName
+		}
+		return isRedactedAPIKey(viper.GetString(p.GetConfigField(field)))
+	}
+
 	if !livemode {
 		if err := viper.ReadInConfig(); err != nil {
 			return false
@@ -277,8 +290,17 @@ func (p *Profile) GetAPIKey(livemode bool) (string, error) {
 	var key string
 	var err error
 
-	// Try to fetch the API key from the configuration file
-	if !livemode {
+	if keyring.ProtectsAllAPIKeys() {
+		field := TestModeAPIKeyName
+		if livemode {
+			field = LiveModeAPIKeyName
+		}
+		key, err = p.retrieveAPIKey(field)
+		if err != nil {
+			return "", validators.ErrAPIKeyNotConfigured
+		}
+	} else if !livemode {
+		// Try to fetch the test API key from the configuration file.
 		// If the user doesn't have an api_key field set, they might be using an
 		// old configuration so try to read from secret_key
 		if viper.IsSet(p.GetConfigField("secret_key")) {
@@ -292,7 +314,7 @@ func (p *Profile) GetAPIKey(livemode bool) (string, error) {
 		}
 	} else {
 		p.redactAllLivemodeValues()
-		key, err = p.retrieveLivemodeValue(LiveModeAPIKeyName)
+		key, err = p.retrieveAPIKey(LiveModeAPIKeyName)
 		if err != nil {
 			return "", errors.New("your live mode API key needs to be re-configured. Run `stripe login` to re-authenticate")
 		}
@@ -395,6 +417,15 @@ func (p *Profile) RegisterAlias(alias, key string) {
 // configuration to disk.
 func (p *Profile) WriteConfigField(field, value string) error {
 	viper.ReadInConfig()
+	if keyring.ProtectsAllAPIKeys() && (field == TestModeAPIKeyName || field == LiveModeAPIKeyName) {
+		if err := validators.APIKey(value); err != nil {
+			return err
+		}
+		if err := p.saveAPIKey(field, value, "Stripe API key"); err != nil {
+			return err
+		}
+		value = redactedAPIKeyValue(value)
+	}
 	viper.Set(p.GetConfigField(field), value)
 	return writeConfig(viper.GetViper())
 }
@@ -406,9 +437,10 @@ func (p *Profile) DeleteConfigField(field string) error {
 		return err
 	}
 
-	// delete livemode redacted values from config and full values from keyring
-	if field == LiveModeAPIKeyName {
-		p.deleteLivemodeValue(field)
+	if field == LiveModeAPIKeyName || keyring.ProtectsAllAPIKeys() && field == TestModeAPIKeyName {
+		if err := p.deleteAPIKey(field); err != nil {
+			return err
+		}
 	}
 
 	return p.writeProfile(v)
@@ -431,10 +463,14 @@ func (p *Profile) writeProfile(runtimeViper *viper.Viper) error {
 		runtimeViper.Set(p.GetConfigField(LiveModeKeyExpiresAtName), expiresAt)
 
 		// // store redacted key in config
-		runtimeViper.Set(p.GetConfigField(LiveModeAPIKeyName), RedactAPIKey(strings.TrimSpace(p.LiveModeAPIKey)))
+		runtimeViper.Set(p.GetConfigField(LiveModeAPIKeyName), redactedAPIKeyValue(strings.TrimSpace(p.LiveModeAPIKey)))
 
 		// // store actual key in secure keyring
-		if err := p.saveLivemodeValue(LiveModeAPIKeyName, strings.TrimSpace(p.LiveModeAPIKey), "Live mode API key"); err != nil {
+		if err := p.saveAPIKey(LiveModeAPIKeyName, strings.TrimSpace(p.LiveModeAPIKey), "Live mode API key"); err != nil {
+			return err
+		}
+	} else if keyring.ProtectsAllAPIKeys() {
+		if err := p.deleteAPIKey(LiveModeAPIKeyName); err != nil {
 			return err
 		}
 	}
@@ -444,7 +480,14 @@ func (p *Profile) writeProfile(runtimeViper *viper.Viper) error {
 	}
 
 	if p.TestModeAPIKey != "" {
-		runtimeViper.Set(p.GetConfigField(TestModeAPIKeyName), strings.TrimSpace(p.TestModeAPIKey))
+		testModeAPIKey := strings.TrimSpace(p.TestModeAPIKey)
+		if keyring.ProtectsAllAPIKeys() {
+			if err := p.saveAPIKey(TestModeAPIKeyName, testModeAPIKey, "Test mode API key"); err != nil {
+				return err
+			}
+			testModeAPIKey = redactedAPIKeyValue(testModeAPIKey)
+		}
+		runtimeViper.Set(p.GetConfigField(TestModeAPIKeyName), testModeAPIKey)
 		runtimeViper.Set(p.GetConfigField(TestModeKeyExpiresAtName), getKeyExpiresAt())
 	}
 
@@ -554,6 +597,16 @@ func RedactAPIKey(apiKey string) string {
 	return b.String()
 }
 
+func redactedAPIKeyValue(apiKey string) string {
+	if len(apiKey) < 12 {
+		if len(apiKey) >= 8 {
+			return apiKey[:8] + "****"
+		}
+		return "sk_test_****"
+	}
+	return RedactAPIKey(apiKey)
+}
+
 // isRedactedAPIKey checks if the input string is a refacted api key
 func isRedactedAPIKey(apiKey string) bool {
 	keyParts := strings.Split(apiKey, "_")
@@ -576,15 +629,27 @@ func getKeyExpiresAt() string {
 	return time.Now().AddDate(0, 0, KeyValidInDays).UTC().Format(DateStringFormat)
 }
 
-// saveLivemodeValue saves livemode value of given key in keyring
-func (p *Profile) saveLivemodeValue(field, value, description string) error {
-	fieldID := p.GetConfigField(field)
+func (p *Profile) credentialKey(field string) string {
+	if !keyring.ProtectsAllAPIKeys() {
+		return p.GetConfigField(field)
+	}
+	accountID := strings.TrimSpace(p.AccountID)
+	if accountID == "" {
+		accountID = strings.TrimSpace(viper.GetString(p.GetConfigField(AccountIDName)))
+	}
+	if accountID == "" {
+		return p.GetConfigField(field)
+	}
+	return "account." + accountID + "." + field
+}
+
+func (p *Profile) saveAPIKey(field, value, description string) error {
+	fieldID := p.credentialKey(field)
 	return KeyRing.Set(fieldID, []byte(value), description)
 }
 
-// retrieveLivemodeValue retrieves livemode value of given key in keyring
-func (p *Profile) retrieveLivemodeValue(key string) (string, error) {
-	fieldID := p.GetConfigField(key)
+func (p *Profile) retrieveAPIKey(key string) (string, error) {
+	fieldID := p.credentialKey(key)
 	data, err := KeyRing.Get(fieldID)
 	if err != nil {
 		return "", validators.ErrAPIKeyNotConfigured
@@ -592,9 +657,8 @@ func (p *Profile) retrieveLivemodeValue(key string) (string, error) {
 	return string(data), nil
 }
 
-// deleteLivemodeValue deletes livemode value of given key in keyring
-func (p *Profile) deleteLivemodeValue(key string) error {
-	fieldID := p.GetConfigField(key)
+func (p *Profile) deleteAPIKey(key string) error {
+	fieldID := p.credentialKey(key)
 	err := KeyRing.Remove(fieldID)
 	if errors.Is(err, keyring.ErrKeyNotFound) {
 		return nil

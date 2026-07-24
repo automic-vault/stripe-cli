@@ -337,7 +337,9 @@ func (c *Config) SwitchProfile(profileName string) error {
 
 	// Remove the old profile key since it's now been copied to "default"
 	// This keeps the config file clean by not having duplicate data
-	c.RemoveProfile(profileName)
+	if err := removeProfileConfig(profileName); err != nil {
+		return err
+	}
 
 	// Finally, reload the config to pick up the new "default" profile
 	c.InitConfig()
@@ -365,12 +367,13 @@ func (c *Config) RemoveProfile(profileName string) error {
 				profileNameAttr = v["profile_name"]
 			}
 			if field == profileName || profileNameAttr == profileName {
+				if err := deleteProfileAPIKeys(field); err != nil {
+					return err
+				}
 				runtimeViper, err = removeKey(runtimeViper, field)
 				if err != nil {
 					return err
 				}
-
-				deleteLivemodeKey(LiveModeAPIKeyName, field)
 			}
 		}
 	}
@@ -385,12 +388,13 @@ func (c *Config) RemoveAllProfiles() error {
 
 	for field, value := range runtimeViper.AllSettings() {
 		if isProfile(value) {
+			if err := deleteProfileAPIKeys(field); err != nil {
+				return err
+			}
 			runtimeViper, err = removeKey(runtimeViper, field)
 			if err != nil {
 				return err
 			}
-
-			deleteLivemodeKey(LiveModeAPIKeyName, field)
 		}
 	}
 
@@ -415,8 +419,10 @@ func (c *Config) RemoveAuthFields(profileName string) error {
 			}
 			if field == profileName || profileNameAttr == profileName {
 				p := &Profile{ProfileName: field}
+				if err := deleteProfileAPIKeys(field); err != nil {
+					return err
+				}
 				runtimeViper = p.deleteAuthFields(runtimeViper)
-				deleteLivemodeKey(LiveModeAPIKeyName, field)
 			}
 		}
 	}
@@ -438,8 +444,10 @@ func (c *Config) RemoveAllAuthFields() error {
 	for field, value := range runtimeViper.AllSettings() {
 		if isProfile(value) {
 			p := &Profile{ProfileName: field}
+			if err := deleteProfileAPIKeys(field); err != nil {
+				return err
+			}
 			runtimeViper = p.deleteAuthFields(runtimeViper)
-			deleteLivemodeKey(LiveModeAPIKeyName, field)
 		}
 	}
 
@@ -452,13 +460,36 @@ func (c *Config) RemoveAllAuthFields() error {
 	return writeConfig(runtimeViper)
 }
 
-func deleteLivemodeKey(key string, profile string) error {
-	fieldID := profile + "." + key
-	err := KeyRing.Remove(fieldID)
-	if errors.Is(err, keyring.ErrKeyNotFound) {
-		return nil
+func deleteProfileAPIKeys(profile string) error {
+	p := &Profile{ProfileName: profile}
+	fields := []string{LiveModeAPIKeyName}
+	if keyring.ProtectsAllAPIKeys() {
+		fields = append(fields, TestModeAPIKeyName)
 	}
-	return err
+	for _, field := range fields {
+		if err := p.deleteAPIKey(field); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func removeProfileConfig(profileName string) error {
+	runtimeViper := viper.GetViper()
+	for field, value := range runtimeViper.AllSettings() {
+		if !isProfile(value) {
+			continue
+		}
+		profileNameAttr := viper.GetString(field + ".profile_name")
+		if field == profileName || profileNameAttr == profileName {
+			var err error
+			runtimeViper, err = removeKey(runtimeViper, field)
+			if err != nil {
+				return err
+			}
+		}
+	}
+	return writeConfig(runtimeViper)
 }
 
 func deleteTopLevelLivemodeKey(key string) error {
