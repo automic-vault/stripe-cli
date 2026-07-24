@@ -85,6 +85,7 @@ func TestMigratedConfigIsReadableByProfile(t *testing.T) {
 	setupProfileConfig(t, string(helperLoadBytes(t, path)))
 
 	p := Profile{ProfileName: "default"}
+	protectFixtureAPIKey(t, &p, TestModeAPIKeyName, "sk_test_one_key")
 	apiKey, err := p.GetAPIKey(false)
 	require.NoError(t, err)
 	require.Equal(t, "sk_test_one_key", apiKey)
