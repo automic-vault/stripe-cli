@@ -10,7 +10,9 @@ build: |
     --identifier stripe \
     --sign "$CODESIGN_IDENTITY" \
     stripe
-  tar czf out.tgz stripe
+  mkdir -p bin
+  mv -f stripe bin/stripe
+  tar czf out.tgz bin
 
 justification:
   title:
