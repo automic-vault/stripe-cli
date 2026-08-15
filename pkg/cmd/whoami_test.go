@@ -164,6 +164,15 @@ func TestWhoamiWithLiveModeEnvVarKey(t *testing.T) {
 }
 
 func TestWhoamiLiveModeKeyDetected(t *testing.T) {
+	configFile := filepath.Join(t.TempDir(), "config.toml")
+	require.NoError(t, os.WriteFile(
+		configFile,
+		[]byte("[default]\nlive_mode_api_key = 'rk_live_************cdef'\n"),
+		0o600,
+	))
+	viper.SetConfigFile(configFile)
+	t.Cleanup(viper.Reset)
+	require.NoError(t, viper.ReadInConfig())
 	config.KeyRing = keyring.NewMemoryStore(map[string][]byte{
 		"default.live_mode_api_key": []byte("rk_live_1234567890abcdef"),
 	})
