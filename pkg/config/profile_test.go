@@ -19,6 +19,25 @@ import (
 
 const dottedNameError = `profile name "example.project" cannot contain a period; use a hyphen or underscore instead`
 
+type failingStore struct{ err error }
+
+func (s failingStore) Get(string) ([]byte, error)       { return nil, s.err }
+func (s failingStore) Set(string, []byte, string) error { return s.err }
+func (s failingStore) Remove(string) error              { return s.err }
+
+func TestProtectedAPIKeyApprovalErrorIsPreserved(t *testing.T) {
+	if !keyring.ProtectsAllAPIKeys() {
+		t.Skip("platform keeps upstream test-mode config storage")
+	}
+	approvalErr := errors.New("credential request denied")
+	KeyRing = failingStore{err: approvalErr}
+	t.Cleanup(func() { KeyRing = nil })
+
+	_, err := (&Profile{ProfileName: "default", AccountID: "acct_123"}).retrieveAPIKey(TestModeAPIKeyName)
+
+	require.ErrorIs(t, err, approvalErr)
+}
+
 func TestProtectedAPIKeysNeverWrittenToConfig(t *testing.T) {
 	if !keyring.ProtectsAllAPIKeys() {
 		t.Skip("platform keeps upstream test-mode config storage")
