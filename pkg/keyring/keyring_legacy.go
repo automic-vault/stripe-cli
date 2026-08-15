@@ -5,13 +5,14 @@ package keyring
 import (
 	"encoding/json"
 	"errors"
-	"fmt"
 	"os"
 	"path/filepath"
 	"time"
 
 	log "github.com/sirupsen/logrus"
 	zkr "github.com/zalando/go-keyring"
+
+	"github.com/stripe/stripe-cli/pkg/errorcategory"
 )
 
 // IsUsingInsecureStorage reports whether credentials have been written to the
@@ -72,7 +73,7 @@ func (s *zalandoStore) Get(key string) ([]byte, error) {
 		}
 		return []byte(r.val), r.err
 	case <-time.After(s.timeout):
-		return nil, fmt.Errorf("keyring: timed out getting %q", key)
+		return nil, errorcategory.Errorf(errorcategory.Filesystem, "keyring: timed out getting %q", key)
 	}
 }
 
@@ -85,7 +86,7 @@ func (s *zalandoStore) Set(key string, data []byte, description string) error {
 	case err := <-ch:
 		return err
 	case <-time.After(s.timeout):
-		return fmt.Errorf("keyring: timed out setting %q", key)
+		return errorcategory.Errorf(errorcategory.Filesystem, "keyring: timed out setting %q", key)
 	}
 }
 
@@ -101,7 +102,7 @@ func (s *zalandoStore) Remove(key string) error {
 		}
 		return err
 	case <-time.After(s.timeout):
-		return fmt.Errorf("keyring: timed out removing %q", key)
+		return errorcategory.Errorf(errorcategory.Filesystem, "keyring: timed out removing %q", key)
 	}
 }
 
