@@ -211,7 +211,7 @@ func TestWriteProfile(t *testing.T) {
 	expectedConfig := `[tests]
 device_name = 'st-testing'
 display_name = 'test-account-display-name'
-test_mode_api_key = 'sk_test_123'
+test_mode_api_key = '` + expectedStoredAPIKey("sk_test_123") + `'
 test_mode_key_expires_at = '` + expiresAt + `'
 `
 
@@ -253,13 +253,13 @@ func TestWriteProfilesMerge(t *testing.T) {
 	expectedConfig := `[tests]
 device_name = 'st-testing'
 display_name = 'test-account-display-name'
-test_mode_api_key = 'sk_test_123'
+test_mode_api_key = '` + expectedStoredAPIKey("sk_test_123") + `'
 test_mode_key_expires_at = '` + expiresAt + `'
 
 [tests-merge]
 device_name = 'st-testing'
 display_name = 'test-account-display-name'
-test_mode_api_key = 'sk_test_123'
+test_mode_api_key = '` + expectedStoredAPIKey("sk_test_123") + `'
 test_mode_key_expires_at = '` + expiresAt + `'
 `
 
@@ -316,7 +316,7 @@ func TestOldProfileDeleted(t *testing.T) {
 
 	// Overwrites auth keys
 	require.Equal(t, "device-after-test", v.GetString(p.GetConfigField(DeviceNameName)))
-	require.Equal(t, "sk_test_456", v.GetString(p.GetConfigField(TestModeAPIKeyName)))
+	require.Equal(t, expectedStoredAPIKey("sk_test_456"), v.GetString(p.GetConfigField(TestModeAPIKeyName)))
 	require.Equal(t, "", v.GetString(p.GetConfigField(DisplayNameName)))
 	// Deletes experimental section
 	require.False(t, v.IsSet(v.GetString(p.GetConfigField("experimental.stripe_headers"))))
@@ -325,7 +325,7 @@ func TestOldProfileDeleted(t *testing.T) {
 	require.Equal(t, "on", v.GetString(p.GetConfigField("color")))
 	// Leaves the other profile untouched
 	require.Equal(t, "foo-device-name", v.GetString(untouchedProfile.GetConfigField(DeviceNameName)))
-	require.Equal(t, "foo_test_123", v.GetString(untouchedProfile.GetConfigField(TestModeAPIKeyName)))
+	require.Equal(t, expectedStoredAPIKey("foo_test_123"), v.GetString(untouchedProfile.GetConfigField(TestModeAPIKeyName)))
 }
 
 func TestLiveModeAPIKeyKeychainItemDeleted(t *testing.T) {
