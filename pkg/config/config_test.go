@@ -292,6 +292,10 @@ func setupLegacyDottedProfile(t *testing.T) (*Config, string, func()) {
 func TestRemoveProfileWithDottedName(t *testing.T) {
 	c, _, cleanup := setupLegacyDottedProfile(t)
 	defer cleanup()
+	require.NoError(t, KeyRing.Set("example.project.live_mode_api_key", []byte("rk_live_legacy"), ""))
+	if keyring.ProtectsAllAPIKeys() {
+		require.NoError(t, KeyRing.Set("example.project.test_mode_api_key", []byte("sk_test_legacy"), ""))
+	}
 
 	require.NoError(t, c.RemoveProfile("example.project"))
 
@@ -299,6 +303,12 @@ func TestRemoveProfileWithDottedName(t *testing.T) {
 	v := viper.GetViper()
 	require.False(t, v.IsSet("example.project.display_name"))
 	require.Equal(t, "sk_test_sibling", v.GetString("example.test_mode_api_key"))
+	_, err := KeyRing.Get("example.project.live_mode_api_key")
+	require.ErrorIs(t, err, keyring.ErrKeyNotFound)
+	if keyring.ProtectsAllAPIKeys() {
+		_, err = KeyRing.Get("example.project.test_mode_api_key")
+		require.ErrorIs(t, err, keyring.ErrKeyNotFound)
+	}
 }
 
 // `stripe logout --project-name example.project` is the documented way out of a
