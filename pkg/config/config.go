@@ -443,12 +443,13 @@ func (c *Config) RemoveProfile(profileName string) error {
 	if !matched && isProfileTable(runtimeViper, profileName) {
 		matched = true
 
+		if err := deleteProfileAPIKeys(profileName); err != nil {
+			return err
+		}
 		runtimeViper, err = removeKey(runtimeViper, profileName)
 		if err != nil {
 			return err
 		}
-
-		deleteLivemodeKey(LiveModeAPIKeyName, profileName)
 	}
 
 	if !matched {
@@ -533,8 +534,10 @@ func (c *Config) RemoveAuthFields(profileName string) error {
 	// out of one, so handle that case explicitly.
 	if !matched && isNestedProfileName(profileName) && runtimeViper.IsSet(profileName) {
 		p := &Profile{ProfileName: profileName}
+		if err := deleteProfileAPIKeys(profileName); err != nil {
+			return err
+		}
 		runtimeViper = p.deleteAuthFields(runtimeViper)
-		deleteLivemodeKey(LiveModeAPIKeyName, profileName)
 	}
 
 	deleteTopLevelLivemodeKey(UATKeychainItemKey)
@@ -594,17 +597,26 @@ func deleteProfileAPIKeys(profile string) error {
 
 func removeProfileConfig(profileName string) error {
 	runtimeViper := viper.GetViper()
+	var matched bool
 	for field, value := range runtimeViper.AllSettings() {
 		if !isProfile(value) {
 			continue
 		}
 		profileNameAttr := viper.GetString(field + ".profile_name")
 		if field == profileName || profileNameAttr == profileName {
+			matched = true
 			var err error
 			runtimeViper, err = removeKey(runtimeViper, field)
 			if err != nil {
 				return err
 			}
+		}
+	}
+	if !matched && isProfileTable(runtimeViper, profileName) {
+		var err error
+		runtimeViper, err = removeKey(runtimeViper, profileName)
+		if err != nil {
+			return err
 		}
 	}
 	return writeConfig(runtimeViper)
