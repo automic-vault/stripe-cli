@@ -16,7 +16,7 @@ build: |
 
 justification:
   title:
-    Trivially Accessible Stripe Credentials
+    Unprotected Credential Access
   detail: |
     Upstream Stripe CLI stores test-mode API keys in plaintext configuration
     and uses a macOS Keychain item that same-user processes can extract with
