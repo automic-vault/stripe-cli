@@ -878,7 +878,7 @@ func isRedactedAPIKey(apiKey string) bool {
 		return false
 	}
 
-	if keyParts[0] != "sk" && keyParts[0] != "rk" {
+	if keyParts[0] != "sk" && keyParts[0] != "rk" && keyParts[0] != "rkcs" {
 		return false
 	}
 
