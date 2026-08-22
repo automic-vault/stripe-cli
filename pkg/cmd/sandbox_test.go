@@ -566,6 +566,26 @@ func TestSaveSandboxToConfig_EmptyKey(t *testing.T) {
 	assert.Contains(t, err.Error(), "no secret key")
 }
 
+func TestSaveSandboxToConfigProtectsAPIKey(t *testing.T) {
+	cleanup := setupSandboxTestConfig(t)
+	defer cleanup()
+
+	var resp sandbox.ProvisionResponse
+	require.NoError(t, json.Unmarshal([]byte(`{"restricted_key":"rkcs_test_claim_status","account_id":"acct_sandbox_123"}`), &resp))
+	require.NoError(t, saveSandboxToConfig(&resp))
+
+	content, err := os.ReadFile(Config.ProfilesFile)
+	require.NoError(t, err)
+	if keyring.ProtectsAllAPIKeys() {
+		assert.NotContains(t, string(content), activeClaimableSandboxAPIKey)
+		stored, err := config.KeyRing.Get("account.acct_sandbox_123.test_mode_api_key")
+		require.NoError(t, err)
+		assert.Equal(t, []byte(activeClaimableSandboxAPIKey), stored)
+	} else {
+		assert.Contains(t, string(content), activeClaimableSandboxAPIKey)
+	}
+}
+
 func TestSandboxClaimCmd_NoActiveSandbox(t *testing.T) {
 	cleanup := setupSandboxTestConfig(t)
 	defer cleanup()
