@@ -362,23 +362,6 @@ func saveSandboxToConfig(result *sandbox.ProvisionResponse) error {
 		return err
 	}
 
-	// Also write sandbox fields via WriteConfigField to update the global
-	// viper instance (CreateProfile writes to a local viper copy).
-	if result.GetClaimURL() != "" {
-		Config.Profile.WriteConfigField(config.SandboxClaimURLName, result.GetClaimURL())
-	}
-	if result.GetExpiresAt() != "" {
-		Config.Profile.WriteConfigField(config.SandboxExpiresAtName, result.GetExpiresAt())
-	}
-	Config.Profile.WriteConfigField(config.TestModeAPIKeyName, secretKey)
-	if pubKey := result.GetPublishableKey(); pubKey != "" {
-		Config.Profile.WriteConfigField(config.TestModePubKeyName, pubKey)
-	}
-	if accountID != "" {
-		Config.Profile.WriteConfigField(config.AccountIDName, accountID)
-		Config.Profile.WriteConfigField(config.DisplayNameName, accountID)
-	}
-
 	return nil
 }
 
@@ -402,7 +385,8 @@ func isClaimableSandbox() bool {
 }
 
 func sandboxTestModeAPIKey() string {
-	return viper.GetString(Config.Profile.GetConfigField(config.TestModeAPIKeyName))
+	key, _ := Config.Profile.GetAPIKey(false)
+	return key
 }
 
 // sandboxClaimed reports whether the profile's claimable sandbox has already been claimed. API failures return false.
