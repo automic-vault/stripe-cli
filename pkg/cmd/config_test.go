@@ -66,6 +66,12 @@ func setupRemoveProfileTest(t *testing.T, contents string) (*configCmd, string) 
 		"bbq.sandbox.live_mode_api_key": []byte("rk_live_dotted"),
 		"default.live_mode_api_key":     []byte("rk_live_default"),
 	})
+	if keyring.ProtectsAllAPIKeys() {
+		config.KeyRing = keyring.NewMemoryStore(map[string][]byte{
+			"account.acct_123.live_mode_api_key": []byte("rk_live_dotted"),
+			"default.live_mode_api_key":          []byte("rk_live_default"),
+		})
+	}
 	Config.InitConfig()
 
 	t.Cleanup(func() {
@@ -135,7 +141,11 @@ func TestConfigRemoveProfileWithDottedName(t *testing.T) {
 
 	// The keyring entry is namespaced by profile name, so it has to go too, and
 	// only for the profile that was removed.
-	_, err = config.KeyRing.Get("bbq.sandbox.live_mode_api_key")
+	removedKey := "bbq.sandbox.live_mode_api_key"
+	if keyring.ProtectsAllAPIKeys() {
+		removedKey = "account.acct_123.live_mode_api_key"
+	}
+	_, err = config.KeyRing.Get(removedKey)
 	assert.ErrorIs(t, err, keyring.ErrKeyNotFound)
 	remaining, err := config.KeyRing.Get("default.live_mode_api_key")
 	require.NoError(t, err)
