@@ -84,9 +84,11 @@ func GetPluginMetadata(ctx context.Context, apiBaseURL, dashboardBaseURL, apiVer
 		APIBaseURL:     metadataBaseURL,
 	}
 
-	resolvedCreds, err := profile.ResolveCredentialsForAnyMode(base.Livemode)
-	if err != nil {
-		resolvedCreds = stripe.NewAPIKeyCredentials(apiKey)
+	resolvedCreds := stripe.NewAPIKeyCredentials(apiKey)
+	if apiKey != "" {
+		if creds, err := profile.ResolveCredentialsForAnyMode(base.Livemode); err == nil {
+			resolvedCreds = creds
+		}
 	}
 
 	requestParams := map[string]interface{}{

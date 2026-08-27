@@ -830,8 +830,9 @@ func TestBackfillMissingInstalledPluginMetadataWritesLocalMetadata(t *testing.T)
 	var requestedVersion string
 	stripeServer := httptest.NewServer(http.HandlerFunc(func(res http.ResponseWriter, req *http.Request) {
 		switch req.URL.Path {
-		case "/v1/stripecli/get-plugin-metadata":
+		case "/ajax/stripecli/plugins_metadata":
 			requestedVersion = req.URL.Query().Get("version")
+			require.Empty(t, req.Header.Get("Authorization"))
 			body, err := json.Marshal(requests.PluginMetadata{
 				BinaryURL:      "https://example.test/appA/2.0.1",
 				PluginManifest: string(singlePluginManifest(t, "appA", manifestContent, nil)),
@@ -851,6 +852,18 @@ func TestBackfillMissingInstalledPluginMetadataWritesLocalMetadata(t *testing.T)
 	require.NoError(t, err)
 	require.Equal(t, "appA", plugin.Shortname)
 	require.Equal(t, []string{"appA"}, config.GetInstalledPlugins())
+}
+
+func TestBackfillMissingInstalledPluginMetadataWithoutPluginsDoesNotReadCredentials(t *testing.T) {
+	fs := afero.NewMemMapFs()
+	config := &TestConfig{}
+	ring := &fakeKeyring{}
+	originalKeyRing := cfgpkg.KeyRing
+	cfgpkg.KeyRing = ring
+	t.Cleanup(func() { cfgpkg.KeyRing = originalKeyRing })
+
+	require.NoError(t, BackfillMissingInstalledPluginMetadata(context.Background(), config, fs, "https://api.example.test", "https://dashboard.example.test"))
+	require.Zero(t, ring.getCalls)
 }
 
 func TestBackfillMissingInstalledPluginMetadataUsesCachedManifestBeforeNetwork(t *testing.T) {
@@ -913,9 +926,10 @@ func TestBackfillMissingInstalledPluginMetadataSkipsStaleCachedManifest(t *testi
 	var requestedVersion string
 	stripeServer := httptest.NewServer(http.HandlerFunc(func(res http.ResponseWriter, req *http.Request) {
 		switch req.URL.Path {
-		case "/v1/stripecli/get-plugin-metadata":
+		case "/ajax/stripecli/plugins_metadata":
 			requestCount++
 			requestedVersion = req.URL.Query().Get("version")
+			require.Empty(t, req.Header.Get("Authorization"))
 			body, err := json.Marshal(requests.PluginMetadata{
 				BinaryURL:      "https://example.test/appA/2.0.1",
 				PluginManifest: string(singlePluginManifest(t, "appA", manifestContent, nil)),

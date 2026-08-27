@@ -379,12 +379,6 @@ func BackfillMissingInstalledPluginMetadata(ctx context.Context, config config.I
 		dashboardBaseURL = stripe.DashboardBaseURLForAPIBaseURL(apiBaseURL)
 	}
 
-	creds, err := config.GetProfile().ResolveCredentialsForAnyMode(false)
-	if err != nil && !errors.Is(err, validators.ErrAPIKeyNotConfigured) {
-		return err
-	}
-	apiKey := creds.Token
-
 	pluginNames, err := GetInstalledPluginNames(config, fs)
 	if err != nil {
 		return err
@@ -452,7 +446,7 @@ func BackfillMissingInstalledPluginMetadata(ctx context.Context, config config.I
 			}).Debugf("could not read cached manifest plugin metadata before network fallback: %s", manifestErr)
 		}
 
-		resolvedPlugin, err := resolvePluginFromMetadata(ctx, config, fs, pluginName, installedVersion, apiBaseURL, dashboardBaseURL, apiKey)
+		resolvedPlugin, err := resolvePluginFromMetadata(ctx, config, fs, pluginName, installedVersion, apiBaseURL, dashboardBaseURL, "")
 		if err != nil {
 			log.WithFields(log.Fields{
 				"prefix":  "plugins.BackfillMissingInstalledPluginMetadata",
