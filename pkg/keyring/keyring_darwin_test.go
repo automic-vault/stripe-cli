@@ -3,6 +3,7 @@
 package keyring
 
 import (
+	"os"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -11,6 +12,12 @@ import (
 func TestVaultKey(t *testing.T) {
 	require.Equal(t, "STRIPE_CLI_64656661756C742E746573745F6D6F64655F6170695F6B6579", vaultKey("default.test_mode_api_key"))
 	require.NotEqual(t, vaultKey("a-b"), vaultKey("a b"))
+}
+
+func TestSaveFieldsIncludeWorkingDirectory(t *testing.T) {
+	cwd, err := os.Getwd()
+	require.NoError(t, err)
+	require.Equal(t, cwd, saveFields("default.test_mode_api_key", []byte("secret"))["cwd"])
 }
 
 func TestCredentialRequestDetail(t *testing.T) {

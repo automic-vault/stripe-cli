@@ -79,11 +79,7 @@ func (s *vaultStore) Set(key string, data []byte, _ string) error {
 	}
 	defer C.xpc_release(message)
 
-	for field, value := range map[string]string{
-		"op":    "stripe-save",
-		"key":   vaultKey(key),
-		"value": string(data),
-	} {
+	for field, value := range saveFields(key, data) {
 		if err := setString(message, field, value); err != nil {
 			return err
 		}
@@ -94,6 +90,16 @@ func (s *vaultStore) Set(key string, data []byte, _ string) error {
 	}
 	defer C.xpc_release(reply)
 	return replyError(reply, "secret save failed")
+}
+
+func saveFields(key string, data []byte) map[string]string {
+	cwd, err := os.Getwd()
+	if err != nil {
+		cwd = "."
+	}
+	return map[string]string{
+		"op": "stripe-save", "key": vaultKey(key), "value": string(data), "cwd": cwd,
+	}
 }
 
 func (s *vaultStore) Get(key string) ([]byte, error) {
