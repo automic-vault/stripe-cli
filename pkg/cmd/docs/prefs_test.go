@@ -15,6 +15,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	cliconfig "github.com/stripe/stripe-cli/pkg/config"
+	"github.com/stripe/stripe-cli/pkg/keyring"
 
 	cmd "github.com/stripe/stripe-cli/pkg/cmd/docs"
 	"github.com/stripe/stripe-cli/pkg/docs"
@@ -22,6 +23,8 @@ import (
 
 func setupPrefsTestConfig(t *testing.T) (*cliconfig.Config, func()) {
 	t.Helper()
+	previousKeyRing := cliconfig.KeyRing
+	cliconfig.KeyRing = keyring.NewMemoryStore(nil)
 	profilesFile := filepath.Join(t.TempDir(), "config.toml")
 	if err := os.WriteFile(profilesFile, []byte{}, 0600); err != nil {
 		t.Fatal(err)
@@ -39,7 +42,10 @@ func setupPrefsTestConfig(t *testing.T) (*cliconfig.Config, func()) {
 		},
 	}
 
-	return cfg, func() { viper.Reset() }
+	return cfg, func() {
+		viper.Reset()
+		cliconfig.KeyRing = previousKeyRing
+	}
 }
 
 func TestPrefsListCommand(t *testing.T) {

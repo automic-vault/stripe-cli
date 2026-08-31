@@ -552,7 +552,14 @@ func TestSandboxCreateCmd_ConfigNotCorrupted(t *testing.T) {
 
 	content, readErr := os.ReadFile(Config.ProfilesFile)
 	require.NoError(t, readErr)
-	assert.Contains(t, string(content), "sk_test_sandbox")
+	if keyring.ProtectsAllAPIKeys() {
+		assert.NotContains(t, string(content), "sk_test_sandbox")
+		stored, keyringErr := config.KeyRing.Get("account.acct_sandbox_123.test_mode_api_key")
+		require.NoError(t, keyringErr)
+		assert.Equal(t, []byte("sk_test_sandbox"), stored)
+	} else {
+		assert.Contains(t, string(content), "sk_test_sandbox")
+	}
 }
 
 func TestSaveSandboxToConfig_EmptyKey(t *testing.T) {

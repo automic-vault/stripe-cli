@@ -375,7 +375,8 @@ func (p *Profile) GetAPIKey(livemode bool) (string, error) {
 	var key string
 	var err error
 
-	if keyring.ProtectsAllAPIKeys() {
+	switch {
+	case keyring.ProtectsAllAPIKeys():
 		field := TestModeAPIKeyName
 		if livemode {
 			field = LiveModeAPIKeyName
@@ -384,7 +385,7 @@ func (p *Profile) GetAPIKey(livemode bool) (string, error) {
 		if err != nil {
 			return "", validators.ErrAPIKeyNotConfigured
 		}
-	} else if !livemode {
+	case !livemode:
 		// Try to fetch the test API key from the configuration file.
 		// If the user doesn't have an api_key field set, they might be using an
 		// old configuration so try to read from secret_key
@@ -397,7 +398,7 @@ func (p *Profile) GetAPIKey(livemode bool) (string, error) {
 		if err := viper.ReadInConfig(); err == nil {
 			key = viper.GetString(p.GetConfigField(TestModeAPIKeyName))
 		}
-	} else {
+	default:
 		p.redactAllLivemodeValues()
 		key, err = p.retrieveAPIKey(LiveModeAPIKeyName)
 		if err != nil {
