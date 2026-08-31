@@ -234,6 +234,7 @@ func send(message C.xpc_object_t) (C.xpc_object_t, error) {
 
 	reply := C.xpc_connection_send_message_with_reply_sync(connection, message)
 	if unsafe.Pointer(reply) == nil {
+		//nolint:staticcheck // Automic Vault is a product name.
 		return nil, errors.New("Automic Vault approval did not reply")
 	}
 	if C.xpc_get_type(reply) == C.av_xpc_type_error() {
