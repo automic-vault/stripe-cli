@@ -3,6 +3,8 @@
 package keyring
 
 import (
+	"errors"
+	"os"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -40,4 +42,30 @@ func TestApprovalServiceUnavailableMessage(t *testing.T) {
 	require.Equal(t,
 		"Automic Vault approval service is not running; open the menu bar app",
 		approvalServiceUnavailableMessage(false))
+}
+
+func TestVaultMutationsIncludeWorkingDirectory(t *testing.T) {
+	t.Chdir(t.TempDir())
+	cwd, err := os.Getwd()
+	require.NoError(t, err)
+	for _, op := range []string{"stripe-save", "stripe-delete"} {
+		t.Run(op, func(t *testing.T) {
+			reachedBroker := errors.New("request inspected")
+			called := false
+			store := &vaultStore{sendRequest: func(message xpcObject) (xpcObject, error) {
+				called = true
+				require.Equal(t, op, requestString(message, "op"))
+				require.Equal(t, vaultKey("uat"), requestString(message, "key"))
+				require.Equal(t, cwd, requestString(message, "cwd"), "secret mutation is missing its working directory")
+				return nil, reachedBroker
+			}}
+			if op == "stripe-save" {
+				err = store.Set("uat", []byte("test-credential"), "")
+			} else {
+				err = store.Remove("uat")
+			}
+			require.ErrorIs(t, err, reachedBroker)
+			require.True(t, called)
+		})
+	}
 }
