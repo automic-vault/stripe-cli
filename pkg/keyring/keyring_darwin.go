@@ -49,7 +49,29 @@ const approvalServiceSigningRequirement = `anchor apple generic and certificate 
 const humanApprovalRequiredEvent = "human-approval-required"
 const humanApprovalRequiredNotice = "automic vault: human approval required\n"
 
-type vaultStore struct{}
+type xpcObject = C.xpc_object_t
+
+type vaultStore struct {
+	// Tests can inspect the actual wire request without contacting the broker.
+	sendRequest func(xpcObject) (xpcObject, error)
+}
+
+func (s *vaultStore) send(message xpcObject) (xpcObject, error) {
+	if s.sendRequest != nil {
+		return s.sendRequest(message)
+	}
+	return send(message)
+}
+
+func requestString(message xpcObject, key string) string {
+	keyCString := C.CString(key)
+	defer C.free(unsafe.Pointer(keyCString))
+	value := C.xpc_dictionary_get_string(message, keyCString)
+	if value == nil {
+		return ""
+	}
+	return C.GoString(value)
+}
 
 func newSecureStore(_, _ string) SecureStore {
 	return &vaultStore{}
@@ -93,6 +115,11 @@ func av_approval_event(eventName *C.char) {
 }
 
 func (s *vaultStore) Set(key string, data []byte, _ string) error {
+	cwd, err := os.Getwd()
+	if err != nil {
+		return fmt.Errorf("cannot determine secret mutation working directory: %w", err)
+	}
+
 	message := C.xpc_dictionary_create_empty()
 	if unsafe.Pointer(message) == nil {
 		return errors.New("failed to create Automic Vault XPC message")
@@ -101,6 +128,7 @@ func (s *vaultStore) Set(key string, data []byte, _ string) error {
 
 	for field, value := range map[string]string{
 		"op":    "stripe-save",
+		"cwd":   cwd,
 		"key":   vaultKey(key),
 		"value": string(data),
 	} {
@@ -108,7 +136,7 @@ func (s *vaultStore) Set(key string, data []byte, _ string) error {
 			return err
 		}
 	}
-	reply, err := send(message)
+	reply, err := s.send(message)
 	if err != nil {
 		return err
 	}
@@ -130,7 +158,7 @@ func (s *vaultStore) Get(key string) ([]byte, error) {
 	if err := addRequestMetadata(message, key, vaultKey); err != nil {
 		return nil, err
 	}
-	reply, err := send(message)
+	reply, err := s.send(message)
 	if err != nil {
 		return nil, err
 	}
@@ -155,19 +183,27 @@ func (s *vaultStore) Get(key string) ([]byte, error) {
 }
 
 func (s *vaultStore) Remove(key string) error {
+	cwd, err := os.Getwd()
+	if err != nil {
+		return fmt.Errorf("cannot determine secret mutation working directory: %w", err)
+	}
+
 	message := C.xpc_dictionary_create_empty()
 	if unsafe.Pointer(message) == nil {
 		return errors.New("failed to create Automic Vault XPC message")
 	}
 	defer C.xpc_release(message)
 
+	if err := setString(message, "cwd", cwd); err != nil {
+		return err
+	}
 	if err := setString(message, "op", "stripe-delete"); err != nil {
 		return err
 	}
 	if err := setString(message, "key", vaultKey(key)); err != nil {
 		return err
 	}
-	reply, err := send(message)
+	reply, err := s.send(message)
 	if err != nil {
 		return err
 	}
