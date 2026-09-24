@@ -156,7 +156,7 @@ func TestAnonymousPluginMetadataDoesNotReadCredentials(t *testing.T) {
 	}))
 	defer server.Close()
 
-	_, err := GetPluginMetadata(context.Background(), "https://api.example.test", server.URL, "2026-08-27", "", &config.Profile{}, "docs", "", "darwin", "arm64", "machine")
+	_, err := GetPluginMetadata(context.Background(), "https://api.example.test", server.URL, "2026-08-27", "", &config.Profile{}, "docs", "", "darwin", "arm64")
 	require.NoError(t, err)
 	require.Zero(t, ring.gets)
 }
