@@ -156,6 +156,7 @@ func TestConfigCredentialWritesRequireSecurePermissions(t *testing.T) {
 	for _, writer := range []string{"profile", "profile field", "config field"} {
 		for _, denied := range []bool{false, true} {
 			t.Run(fmt.Sprintf("%s/denied=%t", writer, denied), func(t *testing.T) {
+				const newAPIKey = "sk_test_new_placeholder"
 				c, path, cleanup := setupTestConfig(t)
 				defer cleanup()
 				original := []byte("[default]\ntest_mode_api_key = 'old-test-placeholder'\n")
@@ -174,12 +175,12 @@ func TestConfigCredentialWritesRequireSecurePermissions(t *testing.T) {
 				var err error
 				switch writer {
 				case "profile":
-					p := Profile{ProfileName: "default", TestModeAPIKey: "new-test-placeholder"}
+					p := Profile{ProfileName: "default", TestModeAPIKey: newAPIKey}
 					err = p.CreateProfile()
 				case "profile field":
-					err = c.Profile.WriteConfigField(TestModeAPIKeyName, "new-test-placeholder")
+					err = c.Profile.WriteConfigField(TestModeAPIKeyName, newAPIKey)
 				case "config field":
-					err = c.WriteConfigField("default."+TestModeAPIKeyName, "new-test-placeholder")
+					err = c.WriteConfigField("default."+TestModeAPIKeyName, newAPIKey)
 				}
 				if denied {
 					require.ErrorIs(t, err, os.ErrPermission)
@@ -191,7 +192,11 @@ func TestConfigCredentialWritesRequireSecurePermissions(t *testing.T) {
 					info, statErr := os.Stat(path)
 					require.NoError(t, statErr)
 					require.Equal(t, os.FileMode(0600), info.Mode().Perm())
-					require.Equal(t, "new-test-placeholder", c.Profile.ReadProfileString(TestModeAPIKeyName))
+					expected := newAPIKey
+					if writer != "config field" {
+						expected = expectedStoredAPIKey(newAPIKey)
+					}
+					require.Equal(t, expected, c.Profile.ReadProfileString(TestModeAPIKeyName))
 				}
 			})
 		}
